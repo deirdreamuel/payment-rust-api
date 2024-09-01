@@ -1,8 +1,36 @@
-# Welcome to your CDK TypeScript project
+# Rust Payment API CDK
 
-This is a blank project for CDK development with TypeScript.
+## Getting Started
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+### Installing AWS CDK CLI
+
+```
+sudo npm install -g aws-cdk
+```
+
+### Install NPM Dependencies
+
+```
+npm install
+```
+
+### Synthesizing CF Stacks (Not required for deploying)
+
+```
+cdk synth
+```
+
+### Deploying Stacks
+
+```
+cdk deploy STACK_NAME
+```
+
+To deploy all stacks use the following command:
+
+```
+cdk deploy --all
+```
 
 ## Useful commands
 
