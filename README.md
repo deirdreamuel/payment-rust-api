@@ -1,6 +1,8 @@
 # Rust Axum Api using Lambda with Api Gateway Proxy Integration
 The following is a Rust Axum Api using Lambda with Api Gateway Proxy integration. This application uses DynamoDB for storage.
 
+## System Diagram
+![payment_rust_api_architecture](https://github.com/user-attachments/assets/86115eee-7db4-4774-bf2f-1d384bccd2ff)
 
 ### Prerequisites
 1. `Rust` (https://www.rust-lang.org/learn/get-started).
