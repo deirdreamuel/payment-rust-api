@@ -1,0 +1,70 @@
+name: Deploy CDK Project
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: "Log level"
+        required: true
+        default: "warning"
+        type: choice
+        options:
+          - info
+          - warning
+          - debug
+      tags:
+        description: "Test scenario tags"
+        required: false
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain with Cargo Lambda
+        uses: moonrepo/setup-rust@v1
+        with:
+          bins: cargo-lambda
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Install Zig toolchain
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.14.0
+
+      - name: Build Lambda
+        run: cargo lambda build --release --arm64 --output-format zip
+
+      - name: Verify Lambda artifact
+        run: |
+          test -f target/lambda/rust-api/bootstrap.zip
+          ls -la target/lambda/rust-api/bootstrap.zip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: ./infra
+        run: npm install
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::582250362323:role/payment-rust-api-github-oidc-role
+          aws-region: us-east-1
+
+      - name: CDK deploy
+        working-directory: ./infra
+        run: npx aws-cdk@2 deploy --all --require-approval never
