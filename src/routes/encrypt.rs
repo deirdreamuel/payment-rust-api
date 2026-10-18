@@ -1,15 +1,21 @@
 use aws_sdk_kms::{model::EncryptionAlgorithmSpec, types::Blob};
+use axum::http::HeaderMap;
 use axum::{extract, Json};
-
-use crate::{config, errors::Error, models::common::EncryptedPayload, pkg::keyvault};
 use serde_json::Value;
 
+use crate::utils::authorization::authorize;
+use crate::{config, errors::Error, models::common::EncryptedPayload, pkg::keyvault};
+
 pub async fn post_encrypt(
+    headers: HeaderMap,
     extract::Json(payment): extract::Json<Value>,
 ) -> Result<Json<EncryptedPayload>, Error> {
+    let _user = authorize(headers).await?;
+
     let client = keyvault::CLIENT.get().await;
 
-    let json_string = serde_json::to_string(&payment).unwrap();
+    let json_string =
+        serde_json::to_string(&payment).map_err(|_| Error::bad_request())?;
 
     match client
         .encrypt()
@@ -20,16 +26,18 @@ pub async fn post_encrypt(
         .await
     {
         Ok(result) => {
-            let blob = result.ciphertext_blob().expect("Could not encrypt");
+            let blob = result
+                .ciphertext_blob()
+                .ok_or_else(Error::internal_server_error)?;
             let bytes = blob.as_ref();
 
-            return Ok(Json(EncryptedPayload {
+            Ok(Json(EncryptedPayload {
                 encrypted_payload: base64::encode(bytes),
-            }));
+            }))
         }
-        Err(error) => {
-            println!("{:?}", error);
-            return Err(Error::internal_server_error());
+        Err(_) => {
+            log::error!("KMS encrypt failed");
+            Err(Error::internal_server_error())
         }
-    };
+    }
 }

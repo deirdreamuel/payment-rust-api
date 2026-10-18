@@ -9,14 +9,10 @@ use crate::pkg::db;
 use crate::utils::authorization::authorize;
 
 pub async fn method(headers: HeaderMap) -> Result<Json<Vec<MaskedCard>>, Error> {
-    let user = match authorize(headers).await {
-        Ok(user) => user,
-        Err(error) => return Err(error),
-    };
+    let user = authorize(headers).await?;
 
     let client = db::CLIENT.get().await;
 
-    // Get documents from DynamoDB
     let query = client
         .query()
         .table_name(config::db::PAYMENTS_TABLE_NAME.clone())
@@ -29,11 +25,18 @@ pub async fn method(headers: HeaderMap) -> Result<Json<Vec<MaskedCard>>, Error> 
     match query {
         Ok(result) => {
             if let Some(items) = result.items().map(|slice| slice.to_vec()) {
-                let users: Vec<MaskedCard> = serde_dynamo::from_items(items).unwrap();
-                return Ok(Json(users));
+                let cards: Vec<MaskedCard> =
+                    serde_dynamo::from_items(items).map_err(|_| {
+                        log::error!("Failed to deserialize wallet items");
+                        Error::internal_server_error()
+                    })?;
+                return Ok(Json(cards));
             }
-            return Ok(Json(vec![]));
+            Ok(Json(vec![]))
         }
-        Err(_) => return Err(Error::bad_request()),
+        Err(_) => {
+            log::error!("DynamoDB query failed");
+            Err(Error::bad_request())
+        }
     }
 }
