@@ -57,7 +57,7 @@ pub async fn verify_auth_token(access_token: String) -> Result<User, Error> {
 
                             return Ok(User {
                                 email: parsed.email,
-                                name: parsed.name,
+                                name: parsed.name.unwrap_or_default(),
                             });
                         }
                         Err(_) => return Err(Error::unauthorized()),
@@ -90,12 +90,18 @@ pub struct GoogleOAuthClaims {
     pub sub: String,
     pub email: String,
     pub email_verified: String,
-    pub nbf: String,
-    pub name: String,
-    pub picture: String,
-    pub given_name: String,
-    pub family_name: String,
-    pub locale: String,
+    #[serde(default)]
+    pub nbf: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub picture: Option<String>,
+    #[serde(default)]
+    pub given_name: Option<String>,
+    #[serde(default)]
+    pub family_name: Option<String>,
+    #[serde(default)]
+    pub locale: Option<String>,
     pub iat: String,
     pub exp: String,
     pub alg: String,
