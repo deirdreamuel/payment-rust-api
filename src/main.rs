@@ -1,4 +1,5 @@
 use axum::{
+    http::{header, HeaderValue, Method},
     routing::{get, post},
     Router,
 };
@@ -25,18 +26,24 @@ async fn main() -> Result<(), Error> {
         .without_time()
         .init();
 
+    let cors = CorsLayer::new()
+        .allow_origin([
+            "http://localhost:5173".parse::<HeaderValue>().unwrap(),
+            "https://wallet.amuel.org".parse::<HeaderValue>().unwrap(),
+        ])
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
+        .allow_credentials(true);
+
     let app = Router::new()
         .route(
             "/default/wallet",
-            get(routes::payments::get_payments::method),
-        )
-        .route(
-            "/default/wallet",
-            post(routes::payments::create_payment::method),
+            get(routes::payments::get_payments::method)
+                .post(routes::payments::create_payment::method),
         )
         .route("/default/publickey", get(routes::publickey::get_publickey))
         .route("/default/encrypt", post(routes::encrypt::post_encrypt))
-        .layer(CorsLayer::permissive());
+        .layer(cors);
 
     lambda_http::run(app).await
 }
