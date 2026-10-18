@@ -29,9 +29,16 @@ export class ApiStack extends cdk.Stack {
       keyUsage: kms.KeyUsage.ENCRYPT_DECRYPT,
     });
 
+    // provided.al2023 has GLIBC >= 2.34; cargo-lambda/zig builds need 2.28+.
+    // CDK 2.68 has no PROVIDED_AL2023 constant, so construct the runtime explicitly.
+    const runtime = new lambda.Runtime(
+      "provided.al2023",
+      lambda.RuntimeFamily.OTHER
+    );
+
     this.fn = new lambda.Function(this, "rust_payment_api_lambda", {
       functionName: "rust_payment_api_lambda",
-      runtime: lambda.Runtime.PROVIDED_AL2,
+      runtime,
       architecture: lambda.Architecture.ARM_64,
       handler: "bootstrap",
       code: new lambda.AssetCode(
@@ -49,9 +56,26 @@ export class ApiStack extends cdk.Stack {
 
     this.table.grantReadWriteData(this.fn);
     this.key.grantEncryptDecrypt(this.fn);
-    this.key.grant(this.fn, 'kms:GetPublicKey')
+    this.key.grant(this.fn, "kms:GetPublicKey");
 
-    this.api = new apigwv2.HttpApi(this, "rust_payment_http_api");
+    // Handle OPTIONS at the API Gateway so preflight never depends on Lambda health.
+    this.api = new apigwv2.HttpApi(this, "rust_payment_http_api", {
+      corsPreflight: {
+        allowHeaders: ["authorization", "content-type"],
+        allowMethods: [
+          apigwv2.CorsHttpMethod.GET,
+          apigwv2.CorsHttpMethod.POST,
+          apigwv2.CorsHttpMethod.OPTIONS,
+        ],
+        allowOrigins: [
+          "http://localhost:5173",
+          "https://wallet.amuel.org",
+        ],
+        allowCredentials: true,
+        maxAge: cdk.Duration.days(1),
+      },
+    });
+
     this.api.addRoutes({
       path: "/",
       methods: [apigwv2.HttpMethod.ANY],
