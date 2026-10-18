@@ -19,17 +19,11 @@ pub async fn method(
     headers: HeaderMap,
     extract::Json(payload): extract::Json<EncryptedPayload>,
 ) -> Result<Json<ResponseWrapper>, Error> {
-    let user = match authorize(headers).await {
-        Ok(user) => user,
-        Err(error) => return Err(error),
-    };
+    let user = authorize(headers).await?;
 
     let client = keyvault::CLIENT.get().await;
 
-    let cipher = match base64::decode(payload.encrypted_payload.clone()) {
-        Ok(result) => result,
-        Err(_) => return Err(Error::bad_request()),
-    };
+    let cipher = base64::decode(&payload.encrypted_payload).map_err(|_| Error::bad_request())?;
 
     let result = client
         .decrypt()
@@ -41,32 +35,36 @@ pub async fn method(
 
     match result {
         Ok(result) => {
-            let plaintext = result.plaintext().expect("could not get plaintext");
+            let plaintext = result
+                .plaintext()
+                .ok_or_else(Error::internal_server_error)?;
 
-            let decrypted = String::from_utf8(plaintext.as_ref().to_vec()).unwrap();
-            let payment: Payment = match serde_json::from_str(&decrypted) {
-                Ok(result) => result,
-                Err(_) => return Err(Error::bad_request()),
-            };
+            let decrypted = String::from_utf8(plaintext.as_ref().to_vec())
+                .map_err(|_| Error::bad_request())?;
+            let payment: Payment =
+                serde_json::from_str(&decrypted).map_err(|_| Error::bad_request())?;
 
-            match payment.validate() {
-                Ok(_) => (),
-                Err(_) => return Err(Error::bad_request()),
-            };
+            payment.validate().map_err(|_| Error::bad_request())?;
 
             let card_id = Uuid::new_v4();
+            let last_digits =
+                get_last_4_digits(&payment.card.number).ok_or_else(Error::bad_request)?;
             let masked = MaskedCard {
                 id: card_id.to_string(),
                 name: payment.name,
                 expiration: payment.card.expiration,
-                last_digits: get_last_4_digits(&payment.card.number),
+                last_digits,
                 network: categorize_card_number(&payment.card.number),
             };
 
             let pk: AttributeValue = AttributeValue::S(format!("uid#{}", user.email));
             let sk: AttributeValue = AttributeValue::S(format!("card#{}", card_id));
 
-            let mut item: HashMap<String, AttributeValue> = serde_dynamo::to_item(masked).unwrap();
+            let mut item: HashMap<String, AttributeValue> = serde_dynamo::to_item(masked)
+                .map_err(|_| {
+                    log::error!("Failed to serialize masked card");
+                    Error::internal_server_error()
+                })?;
             item.insert(String::from("pk"), pk);
             item.insert(String::from("sk"), sk);
 
@@ -84,20 +82,20 @@ pub async fn method(
                 .await
             {
                 Ok(_) => (),
-                Err(error) => {
-                    log::error!("PutItem Error: {:?}", error);
+                Err(_) => {
+                    log::error!("DynamoDB PutItem failed");
                     return Err(Error::internal_server_error());
                 }
             };
 
-            return Ok(Json(ResponseWrapper {
+            Ok(Json(ResponseWrapper {
                 message: String::from("success"),
-            }));
+            }))
         }
 
-        Err(error) => {
-            log::error!("Decrypt Error: {:?}", error);
-            return Err(Error::internal_server_error());
+        Err(_) => {
+            log::error!("KMS decrypt failed");
+            Err(Error::internal_server_error())
         }
     }
 }

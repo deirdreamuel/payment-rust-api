@@ -43,6 +43,9 @@ pub fn categorize_card_number(card_number: &str) -> String {
     return String::from("unknown");
 }
 
-pub fn get_last_4_digits(number: &str) -> String {
-    return number.get(number.len() - 4..).unwrap().to_owned();
+pub fn get_last_4_digits(number: &str) -> Option<String> {
+    if number.len() < 4 {
+        return None;
+    }
+    number.get(number.len() - 4..).map(|s| s.to_owned())
 }

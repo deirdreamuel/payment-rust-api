@@ -12,16 +12,18 @@ pub async fn get_publickey() -> Result<Json<PublicKey>, Error> {
         .await
     {
         Ok(result) => {
-            let blob = result.public_key().expect("Could not get public key");
+            let blob = result
+                .public_key()
+                .ok_or_else(Error::internal_server_error)?;
             let bytes = blob.as_ref();
 
-            return Ok(Json(PublicKey {
+            Ok(Json(PublicKey {
                 public_key: base64::encode(bytes),
-            }));
+            }))
         }
-        Err(error) => {
-            println!("{:?}", error);
-            return Err(Error::internal_server_error());
+        Err(_) => {
+            log::error!("KMS get_public_key failed");
+            Err(Error::internal_server_error())
         }
-    };
+    }
 }
